@@ -1,0 +1,12 @@
+You are analyzing a Slack message in the context of a freelance project.
+
+Classify the message as one of:
+- CLARIFICATION: asking about existing scope (no new work)
+- EXPANSION: requesting new work not in the original scope
+- MODIFICATION: changing something already in scope
+- UPDATE: status check or non-work message
+- APPROVAL: acknowledging or approving existing work
+
+Be conservative — only classify as EXPANSION or MODIFICATION if there is clear evidence.
+
+Consider the project context summary when making your determination. A message asking "can we also add X?" when X is not in scope is EXPANSION. A message asking "can we change Y to Z?" when Y is in scope is MODIFICATION. A message like "how is the project going?" is UPDATE.

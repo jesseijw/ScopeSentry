@@ -1,0 +1,51 @@
+export enum PricingTier {
+  PREMIUM = "PREMIUM",
+  MID = "MID",
+  AFFORDABLE = "AFFORDABLE",
+}
+
+export enum ProjectStatus {
+  ACTIVE = "ACTIVE",
+  PAUSED = "PAUSED",
+  COMPLETED = "COMPLETED",
+}
+
+export enum IntentCategory {
+  CLARIFICATION = "CLARIFICATION",
+  EXPANSION = "EXPANSION",
+  MODIFICATION = "MODIFICATION",
+  UPDATE = "UPDATE",
+  APPROVAL = "APPROVAL",
+}
+
+export enum QuoteStatus {
+  DRAFT = "DRAFT",
+  AWAITING_CLIENT = "AWAITING_CLIENT",
+  ACCEPTED = "ACCEPTED",
+  REJECTED = "REJECTED",
+  SUPERSEDED = "SUPERSEDED",
+}
+
+export enum ScopeItemKind {
+  DELIVERABLE = "DELIVERABLE",
+  OUT_OF_SCOPE = "OUT_OF_SCOPE",
+  ASSUMPTION = "ASSUMPTION",
+}
+
+export enum NotificationKind {
+  DRIFT_DETECTED = "DRIFT_DETECTED",
+  CLIENT_ACCEPTED = "CLIENT_ACCEPTED",
+  CLIENT_REQUESTED_CHANGES = "CLIENT_REQUESTED_CHANGES",
+  REMINDER = "REMINDER",
+}
+
+export enum QuoteChatRole {
+  USER = "USER",
+  ASSISTANT = "ASSISTANT",
+  TOOL = "TOOL",
+}
+
+export enum FreelancerOverride {
+  NOT_DRIFT = "NOT_DRIFT",
+  CONFIRMED_DRIFT = "CONFIRMED_DRIFT",
+}

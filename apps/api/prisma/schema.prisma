@@ -1,0 +1,201 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+enum PricingTier {
+  PREMIUM
+  MID
+  AFFORDABLE
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum IntentCategory {
+  CLARIFICATION
+  EXPANSION
+  MODIFICATION
+  UPDATE
+  APPROVAL
+}
+
+enum QuoteStatus {
+  DRAFT
+  AWAITING_CLIENT
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+}
+
+enum ScopeItemKind {
+  DELIVERABLE
+  OUT_OF_SCOPE
+  ASSUMPTION
+}
+
+enum NotificationKind {
+  DRIFT_DETECTED
+  CLIENT_ACCEPTED
+  CLIENT_REQUESTED_CHANGES
+  REMINDER
+}
+
+enum QuoteChatRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum FreelancerOverride {
+  NOT_DRIFT
+  CONFIRMED_DRIFT
+}
+
+model User {
+  id               String         @id @default(uuid())
+  email            String         @unique
+  appleSub         String?        @map("apple_sub")
+  googleSub        String?        @map("google_sub")
+  slackUserId      String?        @map("slack_user_id")
+  slackTeamId      String?        @map("slack_team_id")
+  slackAccessToken Bytes?         @map("slack_access_token")
+  apnsDeviceToken  String?        @map("apns_device_token")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  projects         Project[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Project {
+  id              String            @id @default(uuid())
+  userId          String            @map("user_id")
+  title           String
+  clientName      String            @map("client_name")
+  clientEmail     String            @map("client_email")
+  totalPriceCents BigInt            @map("total_price_cents")
+  currency        String            @default("USD")
+  pricingTier     PricingTier       @map("pricing_tier")
+  startDate       DateTime          @map("start_date") @db.Date
+  endDate         DateTime?         @map("end_date") @db.Date
+  slackChannelId  String?           @map("slack_channel_id")
+  status          ProjectStatus     @default(ACTIVE)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  user            User              @relation(fields: [userId], references: [id])
+  scopes          Scope[]
+  messageAnalyses MessageAnalysis[]
+  quotes          Quote[]
+
+  @@map("projects")
+}
+
+model Scope {
+  id               String      @id @default(uuid())
+  projectId        String      @map("project_id")
+  version          Int         @default(1)
+  summary          String
+  estimatedHours   Decimal     @map("estimated_hours")
+  rawDocumentS3Key String?     @map("raw_document_s3_key")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  project          Project     @relation(fields: [projectId], references: [id])
+  scopeItems       ScopeItem[]
+
+  @@map("scopes")
+}
+
+model ScopeItem {
+  id          String        @id @default(uuid())
+  scopeId     String        @map("scope_id")
+  kind        ScopeItemKind
+  description String
+  scope       Scope         @relation(fields: [scopeId], references: [id])
+  nearestAnalyses MessageAnalysis[] @relation("NearestScopeItem")
+
+  @@map("scope_items")
+}
+
+model MessageAnalysis {
+  id                 String              @id @default(uuid())
+  projectId          String              @map("project_id")
+  slackMessageTs     String              @map("slack_message_ts")
+  slackChannelId     String              @map("slack_channel_id")
+  senderSlackUserId  String              @map("sender_slack_user_id")
+  rawText            String              @map("raw_text")
+  intentCategory     IntentCategory?     @map("intent_category")
+  driftScore         Decimal?            @map("drift_score")
+  nearestScopeItemId String?             @map("nearest_scope_item_id")
+  triggeredQuoteId   String?             @map("triggered_quote_id")
+  freelancerOverride FreelancerOverride? @map("freelancer_override")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  project            Project             @relation(fields: [projectId], references: [id])
+  nearestScopeItem   ScopeItem?          @relation("NearestScopeItem", fields: [nearestScopeItemId], references: [id])
+  triggeredQuote     Quote?              @relation("TriggeredByAnalysis", fields: [triggeredQuoteId], references: [id])
+
+  @@map("message_analyses")
+}
+
+model Quote {
+  id                         String        @id @default(uuid())
+  projectId                  String        @map("project_id")
+  sourceMessageAnalysisId    String        @map("source_message_analysis_id")
+  status                     QuoteStatus   @default(DRAFT)
+  currentVersionId           String?       @map("current_version_id")
+  clientAcknowledgementToken String?       @map("client_acknowledgement_token")
+  slackMessageTs             String?       @map("slack_message_ts")
+  createdAt                  DateTime      @default(now()) @map("created_at")
+  project                    Project       @relation(fields: [projectId], references: [id])
+  sourceAnalysis             MessageAnalysis? @relation("TriggeredByAnalysis", fields: [sourceMessageAnalysisId], references: [id])
+  versions                   QuoteVersion[]
+  chatTurns                  QuoteChatTurn[]
+
+  @@map("quotes")
+}
+
+model QuoteVersion {
+  id                 String   @id @default(uuid())
+  quoteId            String   @map("quote_id")
+  versionNumber      Int      @map("version_number")
+  lineItemsJson      Json     @map("line_items_json")
+  subtotalCents      BigInt   @map("subtotal_cents")
+  totalCents         BigInt   @map("total_cents")
+  timelineImpactDays Int      @map("timeline_impact_days")
+  rationale          String
+  chatTurnId         String?  @map("chat_turn_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  quote              Quote    @relation(fields: [quoteId], references: [id])
+
+  @@map("quote_versions")
+}
+
+model QuoteChatTurn {
+  id        String        @id @default(uuid())
+  quoteId   String        @map("quote_id")
+  role      QuoteChatRole
+  content   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  quote     Quote         @relation(fields: [quoteId], references: [id])
+
+  @@map("quote_chat_turns")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  kind        NotificationKind
+  payloadJson Json             @map("payload_json")
+  deliveredAt DateTime?        @map("delivered_at")
+  readAt      DateTime?        @map("read_at")
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
