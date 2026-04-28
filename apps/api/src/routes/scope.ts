@@ -90,8 +90,17 @@ export async function scopeRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "Empty document — nothing to parse" });
       }
 
-      // Parse scope with NLP
-      const parsed = await parseScope(rawText);
+      // Parse scope with NLP. The parser has a local fallback for development.
+      let parsed;
+      try {
+        parsed = await parseScope(rawText);
+      } catch (err) {
+        fastify.log.error({ err }, "Scope parsing failed");
+        return reply.status(500).send({
+          error: "Scope parsing failed",
+          message: err instanceof Error ? err.message : "Could not parse scope",
+        });
+      }
 
       // Get current version number
       const existingScopes = await prisma.scope.findMany({
@@ -140,20 +149,26 @@ export async function scopeRoutes(fastify: FastifyInstance): Promise<void> {
         )
       );
 
-      // Generate embeddings in batch
+      // Generate embeddings in batch. Embeddings improve drift matching, but
+      // scope creation should still succeed during local development if the
+      // embedding provider is not configured.
       if (createdItems.length > 0) {
-        const texts = allItems.map((item) => item.description);
-        const embeddings = await embedBatch(texts);
+        try {
+          const texts = allItems.map((item) => item.description);
+          const embeddings = await embedBatch(texts);
 
-        // Store embeddings using raw SQL (pgvector)
-        for (let i = 0; i < createdItems.length; i++) {
-          const embedding = embeddings[i];
-          const vectorStr = `[${embedding.join(",")}]`;
-          await prisma.$executeRaw`
-            UPDATE scope_items
-            SET embedding = ${vectorStr}::vector
-            WHERE id = ${createdItems[i].id}
-          `;
+          // Store embeddings using raw SQL (pgvector)
+          for (let i = 0; i < createdItems.length; i++) {
+            const embedding = embeddings[i];
+            const vectorStr = `[${embedding.join(",")}]`;
+            await prisma.$executeRaw`
+              UPDATE scope_items
+              SET embedding = ${vectorStr}::vector
+              WHERE id = ${createdItems[i].id}
+            `;
+          }
+        } catch (err) {
+          fastify.log.warn({ err }, "Scope embedding failed; continuing without embeddings");
         }
       }
 

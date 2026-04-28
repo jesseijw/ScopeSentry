@@ -148,10 +148,16 @@ export const AppleAuthInputSchema = z.object({
 export type AppleAuthInput = z.infer<typeof AppleAuthInputSchema>;
 
 export const GoogleAuthInputSchema = z.object({
-  idToken: z.string(),
+  accessToken: z.string().min(1),
 });
 
 export type GoogleAuthInput = z.infer<typeof GoogleAuthInputSchema>;
+
+export const EmailAuthInputSchema = z.object({
+  email: z.string().email(),
+});
+
+export type EmailAuthInput = z.infer<typeof EmailAuthInputSchema>;
 
 export const RegisterDeviceInputSchema = z.object({
   deviceToken: z.string().min(1),

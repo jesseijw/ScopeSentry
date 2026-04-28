@@ -14,7 +14,7 @@ export function useSubmitScope(projectId: string) {
       } else {
         res = await api.post(`/projects/${projectId}/scope`, { text: data.text })
       }
-      return res.data as Scope
+      return res.data.scope as Scope
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] })

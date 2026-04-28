@@ -1,49 +1,109 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { OAuth2Client } from "google-auth-library";
 import * as jwt from "jsonwebtoken";
+import * as crypto from "crypto";
 import { getPrisma } from "../utils/prisma";
 import {
   AppleAuthInputSchema,
+  EmailAuthInputSchema,
   GoogleAuthInputSchema,
   RegisterDeviceInputSchema,
 } from "@scopesentry/shared";
 import { requireAuth } from "../middleware/auth";
 
-// Apple JWT public key verification
-// In production, fetch keys from https://appleid.apple.com/auth/keys
+// ─── Apple JWKS cache ────────────────────────────────────────────────────────
+
+let appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
+
+async function getApplePublicKey(kid: string): Promise<crypto.KeyObject> {
+  const now = Date.now();
+  // Cache JWKS for 10 minutes
+  if (!appleJwksCache || now - appleJwksCache.fetchedAt > 10 * 60 * 1000) {
+    const res = await fetch("https://appleid.apple.com/auth/keys");
+    if (!res.ok) throw new Error("Failed to fetch Apple JWKS");
+    const data = (await res.json()) as { keys: any[] };
+    appleJwksCache = { keys: data.keys, fetchedAt: now };
+  }
+
+  const jwk = appleJwksCache.keys.find((k) => k.kid === kid);
+  if (!jwk) throw new Error(`Apple public key not found for kid: ${kid}`);
+
+  return crypto.createPublicKey({ key: jwk, format: "jwk" });
+}
+
 async function verifyAppleToken(
   identityToken: string
 ): Promise<{ sub: string; email?: string }> {
-  // Decode the JWT header to get kid
   const parts = identityToken.split(".");
-  if (parts.length !== 3) {
-    throw new Error("Invalid Apple identity token format");
-  }
+  if (parts.length !== 3) throw new Error("Invalid Apple identity token format");
 
-  const payload = JSON.parse(
-    Buffer.from(parts[1], "base64url").toString("utf-8")
-  );
+  const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf-8"));
+  if (!header.kid) throw new Error("Apple token missing kid");
 
-  // In production: fetch JWKS from Apple and verify signature
-  // For now we decode and validate issuer/audience fields
-  if (payload.iss !== "https://appleid.apple.com") {
-    throw new Error("Invalid Apple token issuer");
-  }
+  const publicKey = await getApplePublicKey(header.kid);
 
   const bundleId = process.env.APNS_BUNDLE_ID || "com.scopesentry.app";
-  if (payload.aud !== bundleId) {
-    throw new Error("Invalid Apple token audience");
-  }
+  const payload = jwt.verify(identityToken, publicKey, {
+    algorithms: ["RS256"],
+    issuer: "https://appleid.apple.com",
+    audience: bundleId,
+  }) as jwt.JwtPayload;
 
-  if (!payload.sub) {
-    throw new Error("Apple token missing subject");
-  }
+  if (!payload.sub) throw new Error("Apple token missing subject");
 
-  return { sub: payload.sub as string, email: payload.email as string | undefined };
+  return { sub: payload.sub, email: payload.email as string | undefined };
+}
+
+function toAuthUser(user: {
+  id: string;
+  email: string;
+  slackUserId: string | null;
+  slackTeamId: string | null;
+  apnsDeviceToken: string | null;
+  createdAt: Date;
+}) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.email.split("@")[0],
+    slackUserId: user.slackUserId,
+    slackTeamId: user.slackTeamId,
+    apnsDeviceToken: user.apnsDeviceToken,
+    createdAt: user.createdAt.toISOString(),
+  };
 }
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   const prisma = getPrisma();
+
+  // POST /auth/email
+  // Expo Go-friendly development login. This creates or reuses a user by email.
+  fastify.post(
+    "/auth/email",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = EmailAuthInputSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: "Invalid request", details: body.error });
+      }
+
+      const email = body.data.email.trim().toLowerCase();
+      const user = await prisma.user.upsert({
+        where: { email },
+        create: { email },
+        update: {},
+      });
+
+      const token = (fastify as any).jwt.sign(
+        { sub: user.id, email: user.email },
+        { expiresIn: "30d" }
+      );
+
+      return reply.send({
+        token,
+        user: toAuthUser(user),
+      });
+    }
+  );
 
   // POST /auth/apple
   fastify.post(
@@ -90,11 +150,15 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         { expiresIn: "30d" }
       );
 
-      return reply.send({ token, userId: user.id, email: user.email });
+      return reply.send({
+        token,
+        user: toAuthUser(user),
+      });
     }
   );
 
   // POST /auth/google
+  // Accepts { accessToken } from the mobile app.
   fastify.post(
     "/auth/google",
     async (request: FastifyRequest, reply: FastifyReply) => {
@@ -103,36 +167,39 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "Invalid request", details: body.error });
       }
 
-      const { idToken } = body.data;
+      const { accessToken } = body.data as { accessToken: string };
 
       let googleSub: string;
       let email: string;
 
       try {
-        const client = new OAuth2Client();
-        const ticket = await client.verifyIdToken({
-          idToken,
-          // audience is optional; set if you have a CLIENT_ID
+        // Fetch user info from Google using the access token
+        const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
-        const payload = ticket.getPayload();
-        if (!payload?.sub || !payload?.email) {
-          throw new Error("Missing required fields in Google token");
+
+        if (!userInfoRes.ok) {
+          throw new Error("Failed to fetch Google user info");
         }
-        googleSub = payload.sub;
-        email = payload.email;
+
+        const userInfo = (await userInfoRes.json()) as any;
+        if (!userInfo.sub || !userInfo.email) {
+          throw new Error("Missing required fields in Google user info");
+        }
+        if (userInfo.email_verified === false) {
+          throw new Error("Google email is not verified");
+        }
+        googleSub = userInfo.sub;
+        email = userInfo.email;
       } catch (err) {
-        return reply.status(401).send({ error: "Invalid Google ID token" });
+        fastify.log.warn({ err }, "Google auth failed");
+        return reply.status(401).send({ error: "Google sign-in failed" });
       }
 
       const user = await prisma.user.upsert({
         where: { email },
-        create: {
-          email,
-          googleSub,
-        },
-        update: {
-          googleSub,
-        },
+        create: { email, googleSub },
+        update: { googleSub },
       });
 
       const token = (fastify as any).jwt.sign(
@@ -140,7 +207,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         { expiresIn: "30d" }
       );
 
-      return reply.send({ token, userId: user.id, email: user.email });
+      return reply.send({
+        token,
+        user: toAuthUser(user),
+      });
     }
   );
 

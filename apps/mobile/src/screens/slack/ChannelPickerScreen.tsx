@@ -60,15 +60,15 @@ export default function ChannelPickerScreen({ route, navigation }: Props) {
   }
 
   function channelLabel(c: Channel) {
-    if (c.is_im) return '💬 Direct Message'
-    if (c.is_private) return '🔒'
+    if (c.is_im) return 'DM'
+    if (c.is_private) return 'Private'
     return '#'
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.searchBar}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <Text style={styles.searchIcon}>Search</Text>
         <TextInput
           style={styles.searchInput}
           placeholder="Search channels..."

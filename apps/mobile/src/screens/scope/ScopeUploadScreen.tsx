@@ -59,8 +59,12 @@ export default function ScopeUploadScreen({ route, navigation }: Props) {
         } as any)
         const scope = await submitScope({ file: formData })
         navigation.replace('ScopeConfirm', { projectId, scope })
-      } catch {
-        Alert.alert('Upload failed', 'Could not parse your scope file. Please try again.')
+      } catch (e: any) {
+        console.log('Scope file parse failed:', e?.response?.data || e?.message || e)
+        Alert.alert(
+          'Upload failed',
+          e?.response?.data?.error || e?.message || 'Could not parse your scope file. Please try again.'
+        )
       }
     } else {
       if (!pastedText.trim()) {
@@ -70,8 +74,12 @@ export default function ScopeUploadScreen({ route, navigation }: Props) {
       try {
         const scope = await submitScope({ text: pastedText.trim() })
         navigation.replace('ScopeConfirm', { projectId, scope })
-      } catch {
-        Alert.alert('Parse failed', 'Could not parse the scope text. Please try again.')
+      } catch (e: any) {
+        console.log('Scope text parse failed:', e?.response?.data || e?.message || e)
+        Alert.alert(
+          'Parse failed',
+          e?.response?.data?.error || e?.message || 'Could not parse the scope text. Please try again.'
+        )
       }
     }
   }
@@ -122,7 +130,10 @@ export default function ScopeUploadScreen({ route, navigation }: Props) {
                 onPress={handlePickFile}
                 activeOpacity={0.7}
               >
-                <Text style={styles.dropZoneIcon}>📎</Text>
+                <View style={styles.dropZoneGlyph}>
+                  <View style={styles.dropZonePage} />
+                  <View style={styles.dropZoneArrow} />
+                </View>
                 <Text style={styles.dropZoneTitle}>
                   {pickedFile ? 'Tap to change file' : 'Tap to select file'}
                 </Text>
@@ -131,7 +142,7 @@ export default function ScopeUploadScreen({ route, navigation }: Props) {
 
               {pickedFile && (
                 <View style={styles.filePreview}>
-                  <Text style={styles.fileIcon}>📄</Text>
+                  <View style={styles.fileGlyph} />
                   <View style={styles.fileInfo}>
                     <Text style={styles.fileName} numberOfLines={1}>{pickedFile.name}</Text>
                     <Text style={styles.fileSize}>
@@ -219,7 +230,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  dropZoneIcon: { fontSize: 36 },
+  dropZoneGlyph: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropZonePage: {
+    width: 26,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  dropZoneArrow: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderLeftWidth: 3,
+    borderTopWidth: 3,
+    borderColor: Colors.primary,
+    transform: [{ rotate: '45deg' }],
+    bottom: 2,
+  },
   dropZoneTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
   dropZoneSubtitle: { fontSize: 13, color: Colors.textSecondary },
   filePreview: {
@@ -232,7 +265,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  fileIcon: { fontSize: 24 },
+  fileGlyph: {
+    width: 24,
+    height: 30,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
   fileInfo: { flex: 1 },
   fileName: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   fileSize: { fontSize: 12, color: Colors.textSecondary },

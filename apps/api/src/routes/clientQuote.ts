@@ -8,7 +8,7 @@ import {
   ClientAcknowledgeInputSchema,
   ClientRequestChangesInputSchema,
 } from "@scopesentry/shared";
-import { BuiltLineItem } from "@scopesentry/nlp";
+import { BuiltLineItem, embedBatch } from "@scopesentry/nlp";
 
 function verifyClientToken(token: string): { quoteId: string } {
   const secret = process.env.QUOTE_JWT_SECRET;
@@ -110,21 +110,40 @@ export async function clientQuoteRoutes(fastify: FastifyInstance): Promise<void>
         });
 
         // Copy existing items + add new deliverables from accepted change order
-        const existingItems = currentScope.scopeItems.map((si: any) => ({
+        const existingItemData = currentScope.scopeItems.map((si: any) => ({
           scopeId: newScope.id,
           kind: si.kind,
           description: si.description,
         }));
 
-        const newItems = lineItems.map((li) => ({
+        const newItemData = lineItems.map((li) => ({
           scopeId: newScope.id,
           kind: "DELIVERABLE" as const,
           description: li.description,
         }));
 
-        await prisma.scopeItem.createMany({
-          data: [...existingItems, ...newItems],
-        });
+        // Create all items and capture IDs so we can store embeddings
+        const createdItems = await prisma.$transaction([
+          ...existingItemData.map((item) => prisma.scopeItem.create({ data: item })),
+          ...newItemData.map((item) => prisma.scopeItem.create({ data: item })),
+        ]);
+
+        // Generate and store embeddings for new deliverables only
+        // (existing items already have embeddings in the previous scope version)
+        if (newItemData.length > 0) {
+          const newCreatedItems = createdItems.slice(existingItemData.length);
+          const texts = newItemData.map((i) => i.description);
+          const embeddings = await embedBatch(texts);
+
+          for (let i = 0; i < newCreatedItems.length; i++) {
+            const vectorStr = `[${embeddings[i].join(",")}]`;
+            await prisma.$executeRaw`
+              UPDATE scope_items
+              SET embedding = ${vectorStr}::vector
+              WHERE id = ${newCreatedItems[i].id}
+            `;
+          }
+        }
       }
 
       // Post Slack confirmation

@@ -12,7 +12,7 @@ import { LinkSlackChannelInputSchema } from "@scopesentry/shared";
 
 const SLACK_API = "https://slack.com/api";
 
-function buildSlackOAuthUrl(): string {
+function buildSlackOAuthUrl(state: string): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   const redirectUri = `${process.env.API_BASE_URL || "http://localhost:3001"}/slack/oauth/callback`;
   const scopes = [
@@ -33,7 +33,8 @@ function buildSlackOAuthUrl(): string {
     `https://slack.com/oauth/v2/authorize` +
     `?client_id=${clientId}` +
     `&user_scope=${scopes}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}`
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&state=${encodeURIComponent(state)}`
   );
 }
 
@@ -58,8 +59,15 @@ export async function slackRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     "/slack/install",
     { preHandler: requireAuth },
-    async (_req: any, reply: any) => {
-      const url = buildSlackOAuthUrl();
+    async (req: any, reply: any) => {
+      // Encode the user's JWT as state so the callback can identify them
+      const jwtSecret = process.env.JWT_SECRET!;
+      const state = require("jsonwebtoken").sign(
+        { sub: req.userId },
+        jwtSecret,
+        { expiresIn: "1h" }
+      );
+      const url = buildSlackOAuthUrl(state);
       return reply.send({ url });
     }
   );

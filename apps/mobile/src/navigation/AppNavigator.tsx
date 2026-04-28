@@ -24,14 +24,23 @@ const Tab = createBottomTabNavigator<BottomTabParamList>()
 const Stack = createNativeStackNavigator<AppStackParamList>()
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    ProjectsTab: '📋',
-    NotificationsTab: '🔔',
+  const color = focused ? Colors.primary : Colors.textSecondary
+  if (name === 'NotificationsTab') {
+    return (
+      <View style={styles.bellIcon}>
+        <View style={[styles.bellDome, { borderColor: color }]} />
+        <View style={[styles.bellBase, { backgroundColor: color }]} />
+        <View style={[styles.bellDot, { backgroundColor: color }]} />
+      </View>
+    )
   }
+
   return (
-    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>
-      {icons[name] ?? '•'}
-    </Text>
+    <View style={styles.projectsIcon}>
+      <View style={[styles.projectsIconLine, { width: 19, backgroundColor: color }]} />
+      <View style={[styles.projectsIconLine, { width: 13, backgroundColor: color }]} />
+      <View style={[styles.projectsIconLine, { width: 17, backgroundColor: color }]} />
+    </View>
   )
 }
 
@@ -139,3 +148,41 @@ export default function AppNavigator() {
     </Stack.Navigator>
   )
 }
+
+const styles = StyleSheet.create({
+  projectsIcon: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  projectsIconLine: {
+    height: 3,
+    borderRadius: 2,
+  },
+  bellIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellDome: {
+    width: 16,
+    height: 14,
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+    borderWidth: 2,
+    borderBottomWidth: 0,
+  },
+  bellBase: {
+    width: 18,
+    height: 3,
+    borderRadius: 2,
+  },
+  bellDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 2,
+  },
+})

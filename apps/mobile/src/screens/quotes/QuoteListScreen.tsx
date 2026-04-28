@@ -16,18 +16,17 @@ import { Colors } from '../../lib/colors'
 
 type Props = NativeStackScreenProps<AppStackParamList, 'QuoteList'>
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  DRAFT:           { label: 'Draft',           color: Colors.textSecondary },
-  AWAITING_CLIENT: { label: 'Awaiting Client', color: Colors.warning },
-  ACCEPTED:        { label: 'Accepted',         color: Colors.success },
-  REJECTED:        { label: 'Rejected',         color: Colors.danger },
-  SUPERSEDED:      { label: 'Superseded',       color: Colors.textSecondary },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  DRAFT:           { label: 'Draft',           color: Colors.textSecondary, bg: Colors.background },
+  AWAITING_CLIENT: { label: 'Awaiting Client', color: Colors.warning,       bg: Colors.warningLight },
+  ACCEPTED:        { label: 'Accepted',        color: Colors.success,       bg: Colors.successLight },
+  REJECTED:        { label: 'Rejected',        color: Colors.danger,        bg: Colors.dangerLight },
+  SUPERSEDED:      { label: 'Superseded',      color: Colors.textSecondary, bg: Colors.background },
 }
 
 export default function QuoteListScreen({ route, navigation }: Props) {
   const { projectId } = route.params
   const { data, isLoading, refetch, isRefetching } = useProjectQuotes(projectId)
-
   const quotes = data?.quotes ?? []
 
   if (isLoading) {
@@ -62,32 +61,45 @@ export default function QuoteListScreen({ route, navigation }: Props) {
               }}
               activeOpacity={0.7}
             >
+              {/* Top row */}
               <View style={styles.cardTop}>
-                <View style={[styles.statusBadge, { backgroundColor: statusConfig.color + '20' }]}>
+                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
                   <Text style={[styles.statusText, { color: statusConfig.color }]}>
                     {statusConfig.label}
                   </Text>
                 </View>
                 <Text style={styles.createdAt}>
-                  {new Date(quote.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {new Date(quote.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
                 </Text>
               </View>
 
+              {/* Amount */}
               {latestVersion && (
                 <Text style={styles.total}>
-                  {`$${(Number(latestVersion.totalCents) / 100).toFixed(2)}`}
+                  {`$${(Number(latestVersion.totalCents) / 100).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`}
                 </Text>
               )}
 
+              {/* Rationale preview */}
               {latestVersion?.rationale && (
                 <Text style={styles.rationale} numberOfLines={2}>
                   {latestVersion.rationale}
                 </Text>
               )}
 
-              <Text style={styles.action}>
-                {isDraft ? 'Edit in Quote Chat →' : 'View details →'}
-              </Text>
+              {/* Divider + action */}
+              <View style={styles.actionRow}>
+                <View style={styles.divider} />
+                <Text style={styles.action}>
+                  {isDraft ? 'Edit in Quote Chat' : 'View details'}{' →'}
+                </Text>
+              </View>
             </TouchableOpacity>
           )
         }}
@@ -96,10 +108,14 @@ export default function QuoteListScreen({ route, navigation }: Props) {
           <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
         }
         ListEmptyComponent={
-          <View style={styles.centered}>
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyMark}>
+              <View style={styles.emptyQuotePage} />
+              <View style={styles.emptyQuoteLine} />
+            </View>
             <Text style={styles.emptyTitle}>No quotes yet</Text>
             <Text style={styles.emptySubtext}>
-              Quotes are generated automatically when scope drift is detected.
+              Quotes are generated automatically when scope drift is detected in Slack.
             </Text>
           </View>
         }
@@ -111,32 +127,102 @@ export default function QuoteListScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
-  list: { padding: 16, paddingBottom: 40 },
+  list: { padding: 16, paddingBottom: 40, gap: 12 },
+
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
   },
   cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  statusBadge: { borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
   statusText: { fontSize: 12, fontWeight: '700' },
   createdAt: { fontSize: 12, color: Colors.textSecondary },
-  total: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary, marginBottom: 6 },
-  rationale: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18, marginBottom: 10 },
-  action: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary, marginBottom: 8 },
+
+  total: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.primary,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  rationale: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  actionRow: {
+    gap: 10,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.border,
+  },
+  action: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '700',
+    paddingTop: 2,
+  },
+
+  emptyCard: {
+    margin: 24,
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 36,
+    alignItems: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  emptyMark: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyQuotePage: {
+    width: 24,
+    height: 30,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  emptyQuoteLine: {
+    width: 15,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+    marginTop: -10,
+  },
+  emptyTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
   emptySubtext: {
     fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 20,
   },
 })

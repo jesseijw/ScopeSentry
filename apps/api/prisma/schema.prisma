@@ -118,6 +118,7 @@ model ScopeItem {
   scopeId     String        @map("scope_id")
   kind        ScopeItemKind
   description String
+  embedding   Unsupported("vector(1536)")?
   scope       Scope         @relation(fields: [scopeId], references: [id])
   nearestAnalyses MessageAnalysis[] @relation("NearestScopeItem")
 
@@ -134,27 +135,31 @@ model MessageAnalysis {
   intentCategory     IntentCategory?     @map("intent_category")
   driftScore         Decimal?            @map("drift_score")
   nearestScopeItemId String?             @map("nearest_scope_item_id")
-  triggeredQuoteId   String?             @map("triggered_quote_id")
+  triggeredQuoteId   String?             @unique @map("triggered_quote_id")
   freelancerOverride FreelancerOverride? @map("freelancer_override")
+  embedding          Unsupported("vector(1536)")?
   createdAt          DateTime            @default(now()) @map("created_at")
   project            Project             @relation(fields: [projectId], references: [id])
   nearestScopeItem   ScopeItem?          @relation("NearestScopeItem", fields: [nearestScopeItemId], references: [id])
-  triggeredQuote     Quote?              @relation("TriggeredByAnalysis", fields: [triggeredQuoteId], references: [id])
+  triggeredQuote     Quote?              @relation("AnalysisToQuote", fields: [triggeredQuoteId], references: [id])
+  quotesSourced      Quote[]             @relation("QuoteFromAnalysis")
 
+  @@unique([projectId, slackMessageTs, slackChannelId])
   @@map("message_analyses")
 }
 
 model Quote {
   id                         String        @id @default(uuid())
   projectId                  String        @map("project_id")
-  sourceMessageAnalysisId    String        @map("source_message_analysis_id")
+  sourceMessageAnalysisId    String        @unique @map("source_message_analysis_id")
   status                     QuoteStatus   @default(DRAFT)
   currentVersionId           String?       @map("current_version_id")
   clientAcknowledgementToken String?       @map("client_acknowledgement_token")
   slackMessageTs             String?       @map("slack_message_ts")
   createdAt                  DateTime      @default(now()) @map("created_at")
   project                    Project       @relation(fields: [projectId], references: [id])
-  sourceAnalysis             MessageAnalysis? @relation("TriggeredByAnalysis", fields: [sourceMessageAnalysisId], references: [id])
+  sourceAnalysis             MessageAnalysis? @relation("QuoteFromAnalysis", fields: [sourceMessageAnalysisId], references: [id])
+  triggeredByAnalysis        MessageAnalysis? @relation("AnalysisToQuote")
   versions                   QuoteVersion[]
   chatTurns                  QuoteChatTurn[]
 

@@ -88,26 +88,37 @@ function getSystemPrompt(): string {
  * Uses Claude claude-sonnet-4-6 with tool use for structured output
  */
 export async function parseScope(rawText: string): Promise<ParsedScope> {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    return parseScopeLocally(rawText);
+  }
+
   const client = getAnthropic();
   const systemPrompt = getSystemPrompt();
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system: systemPrompt,
-    tools: [extractScopeTool],
-    tool_choice: { type: "any" },
-    messages: [
-      {
-        role: "user",
-        content: `Please analyze this scope of work document and extract the structured scope information:\n\n${rawText}`,
-      },
-    ],
-  });
+  let response: any;
+  try {
+    response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools: [extractScopeTool],
+      tool_choice: { type: "any" },
+      messages: [
+        {
+          role: "user",
+          content: `Please analyze this scope of work document and extract the structured scope information:\n\n${rawText}`,
+        },
+      ],
+    });
+  } catch (err) {
+    console.warn("Claude scope parsing failed; using local parser fallback", err);
+    return parseScopeLocally(rawText);
+  }
 
   // Find the tool use block
   const toolUse = response.content.find(
-    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+    (block: Anthropic.ContentBlock): block is Anthropic.ToolUseBlock =>
+      block.type === "tool_use"
   );
 
   if (!toolUse || toolUse.name !== "extract_scope") {
@@ -126,4 +137,49 @@ export async function parseScope(rawText: string): Promise<ParsedScope> {
   }
 
   return result;
+}
+
+function parseScopeLocally(rawText: string): ParsedScope {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*•\d.)\s]+/, "").trim())
+    .filter(Boolean);
+
+  const deliverables: string[] = [];
+  const out_of_scope: string[] = [];
+  const assumptions: string[] = [];
+  let current: "deliverables" | "out_of_scope" | "assumptions" = "deliverables";
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("out of scope") || lower.includes("excluded") || lower.includes("exclusions")) {
+      current = "out_of_scope";
+      continue;
+    }
+    if (lower.includes("assumption") || lower.includes("assumptions")) {
+      current = "assumptions";
+      continue;
+    }
+    if (lower.includes("deliverable") || lower.includes("scope") || lower.includes("services")) {
+      current = "deliverables";
+      continue;
+    }
+
+    if (line.length < 4) continue;
+    if (current === "out_of_scope") out_of_scope.push(line);
+    else if (current === "assumptions") assumptions.push(line);
+    else deliverables.push(line);
+  }
+
+  const fallbackDeliverables = deliverables.length > 0 ? deliverables : lines.slice(0, 8);
+  const summarySource = rawText.replace(/\s+/g, " ").trim();
+
+  return {
+    deliverables: fallbackDeliverables.slice(0, 20),
+    out_of_scope: out_of_scope.slice(0, 20),
+    assumptions: assumptions.slice(0, 20),
+    scope_summary: summarySource.slice(0, 280) || "Scope document imported for review.",
+    estimated_hours: Math.max(1, Math.ceil(fallbackDeliverables.length * 4)),
+    timeline: "To be confirmed",
+  };
 }

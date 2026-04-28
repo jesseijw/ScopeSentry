@@ -38,7 +38,7 @@ export function useCreateProject() {
       endDate?: string
     }) => {
       const res = await api.post('/projects', data)
-      return res.data // { project }
+      return res.data.project
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

@@ -14,15 +14,22 @@ function getApnsJwt(): string {
     return apnsToken;
   }
 
-  const keyPath = process.env.APNS_KEY_PATH;
   const keyId = process.env.APNS_KEY_ID;
   const teamId = process.env.APNS_TEAM_ID;
+  const keyContent = process.env.APNS_KEY_CONTENT;
+  const keyPath = process.env.APNS_KEY_PATH;
 
-  if (!keyPath || !keyId || !teamId) {
-    throw new Error("APNs configuration missing: APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID required");
+  if (!keyId || !teamId) {
+    throw new Error("APNs configuration missing: APNS_KEY_ID, APNS_TEAM_ID required");
+  }
+  if (!keyContent && !keyPath) {
+    throw new Error("APNs configuration missing: provide APNS_KEY_CONTENT or APNS_KEY_PATH");
   }
 
-  const key = fs.readFileSync(path.resolve(keyPath));
+  const key = keyContent
+    ? Buffer.from(keyContent.replace(/\\n/g, "\n"))
+    : fs.readFileSync(path.resolve(keyPath!));
+
   apnsToken = jwt.sign({}, key, {
     algorithm: "ES256",
     keyid: keyId,
@@ -108,8 +115,7 @@ export async function sendEmail(
 ): Promise<void> {
   const apiKey = process.env.SENDGRID_API_KEY;
   if (!apiKey) {
-    console.warn("SENDGRID_API_KEY not set — skipping email");
-    return;
+    throw new Error("SENDGRID_API_KEY not set — cannot send email");
   }
 
   const fromEmail = process.env.SENDGRID_FROM_EMAIL || "noreply@scopesentry.app";

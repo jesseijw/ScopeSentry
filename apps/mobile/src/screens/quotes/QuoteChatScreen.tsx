@@ -203,7 +203,7 @@ export default function QuoteChatScreen({ route, navigation }: Props) {
     try {
       const result = await approveQuote.mutateAsync()
       Alert.alert(
-        'Quote Sent ✅',
+        'Quote Sent',
         `Posted to Slack and emailed to client. They'll review via the link.`,
         [{ text: 'OK', onPress: () => navigation.navigate('ProjectDetail', { projectId }) }]
       )
